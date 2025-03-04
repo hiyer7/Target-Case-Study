@@ -89,38 +89,7 @@ order by 2 desc;
 #You can use the "payment_value" column in the payments table to get the cost of orders.
 select * from payments limit 1;
 
-with 2017_payment_value_cte as
-(
-select  extract(year from order_purchase_timestamp) as Year,
-        sum(payment_value) as total_payment_value
-from orders
-left join
-payments
-on orders.order_id = payments.order_id
-where extract(month from order_purchase_timestamp) between 1 and 8
-and extract(year from order_purchase_timestamp) = 2017
-group by 1
-),
-
-2018_payment_value_cte as
-(
-select  extract(year from order_purchase_timestamp) as Year,
-        sum(payment_value) as total_payment_value
-from orders
-left join
-payments
-on orders.order_id = payments.order_id
-where extract(month from order_purchase_timestamp) between 1 and 8
-and extract(year from order_purchase_timestamp) = 2018
-group by 1
-)		
-
-
-select (2018_payment_value_cte.total_payment_value/2017_payment_value_cte.total_payment_value)*100
-from 2018_payment_value_cte
-join 2017_payment_value_cte;
-
-with pyment_value_year_cte as
+with payment_value_year_cte as
 (select extract(year from order_purchase_timestamp) as Year,
 		sum(payment_value) as total_payment_value
 from orders
@@ -133,6 +102,113 @@ group by 1)
 select *,
 		lead(total_payment_value, 1) over (order by total_payment_value desc) as lead_total_payment_value,
         (total_payment_value - (lead(total_payment_value, 1) over (order by total_payment_value desc)))/(lead(total_payment_value, 1) over (order by total_payment_value desc))*100 as pct_increase
-from pyment_value_year_cte
+from payment_value_year_cte;
+
+#Q11. Calculate the Total & Average value of order price for each state.
+
+select customer_state,
+		round(sum(payment_value),2) as total_payment,
+		round(avg(payment_value),2) as avg_payment
+from payments
+join orders
+using (order_id)
+join customers
+using(customer_id)
+group by 1;
+
+#Q12. Calculate the Total & Average value of order freight for each state.
+select customer_state,
+		round(sum(freight_value),2) as total_frieght,
+        round(avg(freight_value),2) as avg_frieght
+from order_items
+join orders
+using (order_id)
+
+join
+customers
+using(customer_id)
+group by 1;
+
+#Analysis based on sales, freight and delivery time.
+
+#Q13. Find the no. of days taken to deliver each order from the order’s purchase date as delivery time.
+#Also, calculate the difference (in days) between the estimated & actual delivery date of an order.
+#Do this in a single query.
+
+select order_id, 
+	   timestampdiff(day, order_purchase_timestamp, order_delivered_customer_date) as time_to_deliver,
+       timestampdiff(day, order_delivered_customer_date, order_estimated_delivery_date) as diff_estimated_delivery
+ from orders;
+
+#Q14. Find out the top 5 states with the highest & lowest average freight value.
+with avg_freight_value as
+(select customer_state,
+		round(avg(freight_value),2) as average_frieght_value
+from orders
+join order_items
+using (order_id)
+join customers
+using (customer_id)
+group by 1)
+
+(select * from avg_freight_value order by 2 asc limit 5)
+union
+(select * from avg_freight_value order by 2 desc limit 5)
+order by 2;
+
+#Q15. Find out the top 5 states with the highest & lowest average delivery time.
+with delivery_time_cte as
+(
+select customer_state,
+		round(avg(timestampdiff(hour, order_purchase_timestamp, order_delivered_customer_date)),2) as delivery_time
+from orders
+join customers
+using (customer_id)
+group by 1)
+
+(select * from delivery_time_cte order by 2 asc limit 5)
+union
+(select * from delivery_time_cte order by 2 desc limit 5)
+order by 2;
 
 
+#Q16. Find out the top 5 states where the order delivery is really fast as compared to the estimated date of delivery.
+
+with faster_than_estimated_delivery_cte as
+(
+select customer_state,
+		round(avg(timestampdiff(hour, order_delivered_customer_date, order_estimated_delivery_date)),2) as delivery_time
+from orders
+join customers
+using (customer_id)
+group by 1)
+
+select * from faster_than_estimated_delivery_cte order by 2 asc limit 5;
+
+#--Analysis based on the payments:
+#Q17. Find the month on month no. of orders placed using different payment types.
+select payment_type,
+		count(*)
+from payments
+group by 1;
+
+select date_format(order_purchase_timestamp, "%M") as Month,
+	   payment_type,
+       count(*) order_count
+from orders
+join
+payments
+using (order_id)
+group by 1, 2 
+order by 1, 2;
+
+#Q18. Find the no. of orders placed on the basis of the payment installments that have been paid.
+select * from payments limit 5;
+select payment_installments, count(*) from payments
+group by 1;
+#8 4268
+select payment_installments, 
+count(distinct order_id) as total_orders_placed
+from payments
+group by 1
+order by 2 desc;
